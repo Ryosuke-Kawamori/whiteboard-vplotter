@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2200 1500" width="1100" height="750" font-family="Helvetica, Arial, sans-serif">
+  <rect width="2200" height="1500" fill="#f7f7f5"/>
+
+  <!-- title -->
+  <text x="60" y="70" font-size="42" font-weight="bold" fill="#1a1a1a">V-Plotter 機体ジオメトリ</text>
+  <text x="60" y="110" font-size="26" fill="#666">ホワイトボード 1800 x 900mm / 脚付きスタンド / 原点 = 左モーター軸</text>
+
+  <g transform="translate(150,190)">
+
+    <!-- coordinate axes -->
+    <line x1="0" y1="0" x2="1900" y2="0" stroke="#c00" stroke-width="3" stroke-dasharray="12 8"/>
+    <text x="1920" y="10" font-size="24" fill="#c00">モーター軸ライン  y = 0</text>
+
+    <!-- whiteboard -->
+    <rect x="50" y="50" width="1800" height="900" fill="#ffffff" stroke="#333" stroke-width="4"/>
+    <text x="60" y="985" font-size="22" fill="#333">ホワイトボード面 1800 x 900</text>
+
+    <!-- dead zone top -->
+    <rect x="50" y="50" width="1800" height="330" fill="#e8e8e8"/>
+    <line x1="50" y1="380" x2="1850" y2="380" stroke="#999" stroke-width="2"/>
+    <text x="700" y="230" font-size="30" fill="#888">使用しない領域（ベルトが水平に近く精度低下）</text>
+    <text x="700" y="270" font-size="26" fill="#888">上から約 330mm</text>
+
+    <!-- drawing area -->
+    <rect x="250" y="380" width="1400" height="540" fill="#fffdf0" stroke="#c00" stroke-width="3" stroke-dasharray="14 10"/>
+    <text x="800" y="660" font-size="38" font-weight="bold" fill="#c00">描画エリア</text>
+    <text x="800" y="705" font-size="32" fill="#c00">1400 x 540 mm</text>
+
+    <!-- motors -->
+    <g>
+      <circle cx="0" cy="0" r="34" fill="#2b6cb0"/>
+      <circle cx="0" cy="0" r="12" fill="#fff"/>
+      <text x="-130" y="-50" font-size="26" font-weight="bold" fill="#2b6cb0">左モーター</text>
+      <text x="-130" y="-20" font-size="22" fill="#2b6cb0">(0, 0)</text>
+    </g>
+    <g>
+      <circle cx="1900" cy="0" r="34" fill="#2b6cb0"/>
+      <circle cx="1900" cy="0" r="12" fill="#fff"/>
+      <text x="1830" y="-50" font-size="26" font-weight="bold" fill="#2b6cb0">右モーター</text>
+      <text x="1830" y="-20" font-size="22" fill="#2b6cb0">(1900, 0)</text>
+    </g>
+
+    <!-- belts -->
+    <line x1="0" y1="0" x2="950" y2="650" stroke="#111" stroke-width="4"/>
+    <line x1="1900" y1="0" x2="950" y2="650" stroke="#111" stroke-width="4"/>
+    <text x="330" y="380" font-size="26" fill="#111" transform="rotate(34 330 380)">ベルト L</text>
+    <text x="1420" y="380" font-size="26" fill="#111" transform="rotate(-34 1420 380)">ベルト R</text>
+
+    <!-- gondola -->
+    <circle cx="950" cy="650" r="26" fill="#e07b00"/>
+    <line x1="950" y1="650" x2="950" y2="760" stroke="#e07b00" stroke-width="5"/>
+    <circle cx="950" cy="775" r="16" fill="#e07b00"/>
+    <text x="990" y="645" font-size="28" font-weight="bold" fill="#e07b00">ゴンドラ + ペン</text>
+    <text x="990" y="682" font-size="24" fill="#e07b00">待機位置 (950, 650)</text>
+
+    <!-- counterweights -->
+    <path d="M 0 0 L -80 0 L -80 420" stroke="#666" stroke-width="3" fill="none" stroke-dasharray="8 6"/>
+    <rect x="-104" y="420" width="48" height="80" rx="6" fill="#666"/>
+    <text x="-230" y="545" font-size="22" fill="#666">カウンター</text>
+    <text x="-220" y="575" font-size="22" fill="#666">300g</text>
+
+    <path d="M 1900 0 L 1980 0 L 1980 420" stroke="#666" stroke-width="3" fill="none" stroke-dasharray="8 6"/>
+    <rect x="1956" y="420" width="48" height="80" rx="6" fill="#666"/>
+    <text x="2010" y="545" font-size="22" fill="#666">カウンター</text>
+    <text x="2010" y="575" font-size="22" fill="#666">300g</text>
+
+    <!-- dimension: motor spacing -->
+    <line x1="0" y1="-130" x2="1900" y2="-130" stroke="#444" stroke-width="2"/>
+    <line x1="0" y1="-145" x2="0" y2="-115" stroke="#444" stroke-width="2"/>
+    <line x1="1900" y1="-145" x2="1900" y2="-115" stroke="#444" stroke-width="2"/>
+    <rect x="770" y="-158" width="360" height="42" fill="#f7f7f5"/>
+    <text x="790" y="-125" font-size="30" font-weight="bold" fill="#444">MOTOR_SPACING = 1900</text>
+
+    <!-- dimension: Y_MIN -->
+    <line x1="1740" y1="0" x2="1740" y2="380" stroke="#c00" stroke-width="2"/>
+    <line x1="1725" y1="0" x2="1755" y2="0" stroke="#c00" stroke-width="2"/>
+    <line x1="1725" y1="380" x2="1755" y2="380" stroke="#c00" stroke-width="2"/>
+    <text x="1765" y="200" font-size="24" fill="#c00">Y_MIN 380</text>
+
+    <!-- dimension: Y_MAX -->
+    <line x1="1690" y1="0" x2="1690" y2="920" stroke="#c00" stroke-width="2"/>
+    <line x1="1675" y1="920" x2="1705" y2="920" stroke="#c00" stroke-width="2"/>
+    <text x="1420" y="960" font-size="24" fill="#c00">Y_MAX 920</text>
+
+    <!-- X_MIN -->
+    <line x1="250" y1="1000" x2="1650" y2="1000" stroke="#c00" stroke-width="2"/>
+    <line x1="250" y1="985" x2="250" y2="1015" stroke="#c00" stroke-width="2"/>
+    <line x1="1650" y1="985" x2="1650" y2="1015" stroke="#c00" stroke-width="2"/>
+    <text x="800" y="1040" font-size="24" fill="#c00">X_MIN 250  〜  X_MAX 1650</text>
+
+  </g>
+</svg>

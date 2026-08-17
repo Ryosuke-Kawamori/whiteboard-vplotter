@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" width="1000" height="760" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1000" height="760" fill="#f7f7f5"/>
+  <text x="40" y="52" font-size="30" font-weight="bold" fill="#1a1a1a">枠クランプ 取り付け断面（横から見た図）</text>
+  <text x="40" y="84" font-size="19" fill="#777">左が盤面（描画側）／右が裏側</text>
+
+  <g transform="translate(360,140)">
+
+    <!-- whiteboard frame -->
+    <rect x="0" y="60" width="60" height="520" fill="#dfe4e8" stroke="#8a9199" stroke-width="2"/>
+    <rect x="0" y="60" width="14" height="520" fill="#ffffff" stroke="#8a9199" stroke-width="2"/>
+    <text x="-250" y="330" font-size="21" fill="#5a6169">ホワイトボード枠</text>
+    <text x="-250" y="358" font-size="21" fill="#5a6169">厚み frame_t = 15mm</text>
+    <line x1="-40" y1="330" x2="-2" y2="330" stroke="#8a9199" stroke-width="1.5"/>
+    <line x1="-40" y1="330" x2="-40" y2="330" stroke="#8a9199"/>
+
+    <!-- frame thickness dim -->
+    <line x1="0" y1="40" x2="60" y2="40" stroke="#c00" stroke-width="2"/>
+    <line x1="0" y1="30" x2="0" y2="50" stroke="#c00" stroke-width="2"/>
+    <line x1="60" y1="30" x2="60" y2="50" stroke="#c00" stroke-width="2"/>
+    <text x="72" y="47" font-size="19" fill="#c00">15mm ← ここを実測</text>
+
+    <!-- clamp: top plate -->
+    <rect x="-136" y="18" width="230" height="24" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2"/>
+    <!-- front jaw -->
+    <rect x="-16" y="18" width="16" height="150" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2"/>
+    <!-- back jaw -->
+    <rect x="60" y="18" width="16" height="180" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2"/>
+
+    <text x="-330" y="120" font-size="20" fill="#2b5a8a">表側ジョー 32mm</text>
+    <line x1="-190" y1="112" x2="-22" y2="112" stroke="#2b5a8a" stroke-width="1.5"/>
+    <text x="112" y="196" font-size="20" fill="#2b5a8a">裏側ジョー 38mm</text>
+    <line x1="106" y1="188" x2="82" y2="188" stroke="#2b5a8a" stroke-width="1.5"/>
+
+    <!-- grip ribs -->
+    <rect x="-2" y="72" width="4" height="14" fill="#e07b00"/>
+    <rect x="-2" y="112" width="4" height="14" fill="#e07b00"/>
+    <text x="-338" y="196" font-size="19" fill="#e07b00">滑り止めリブ ×2</text>
+    <text x="-338" y="221" font-size="17" fill="#e07b00">ゴムシートを貼ると確実</text>
+    <line x1="-190" y1="190" x2="-8" y2="128" stroke="#e07b00" stroke-width="1.5"/>
+
+    <!-- bolts -->
+    <g>
+      <rect x="76" y="96" width="46" height="12" fill="#555"/>
+      <rect x="122" y="88" width="22" height="28" rx="3" fill="#333"/>
+      <rect x="60" y="96" width="16" height="12" fill="#888"/>
+      <text x="156" y="108" font-size="20" fill="#333">M4 ボルト ①</text>
+    </g>
+    <g>
+      <rect x="76" y="150" width="46" height="12" fill="#555"/>
+      <rect x="122" y="142" width="22" height="28" rx="3" fill="#333"/>
+      <rect x="60" y="150" width="16" height="12" fill="#888"/>
+      <text x="156" y="162" font-size="20" fill="#333">M4 ボルト ②</text>
+    </g>
+    <text x="156" y="196" font-size="17" fill="#666">ナットは印刷済みの座に埋め込む</text>
+    <text x="156" y="219" font-size="17" fill="#666">先端が枠の裏を押して固定</text>
+
+    <!-- arrow showing clamping -->
+    <path d="M 118 128 L 74 128" stroke="#c00" stroke-width="3" marker-end="url(#ah)"/>
+    <text x="128" y="134" font-size="17" fill="#c00">締める</text>
+
+    <!-- joint tongue -->
+    <rect x="-124" y="-52" width="52" height="70" fill="#6a9fd5" stroke="#2b5a8a" stroke-width="2"/>
+    <circle cx="-98" cy="-34" r="4" fill="#333"/>
+    <circle cx="-98" cy="-4" r="4" fill="#333"/>
+    <text x="-380" y="-40" font-size="20" fill="#2b5a8a">継手（凸）</text>
+    <text x="-380" y="-16" font-size="17" fill="#666">ここに motor_head が</text>
+    <text x="-380" y="6" font-size="17" fill="#666">上から刺さって M4×2 で固定</text>
+    <line x1="-250" y1="-46" x2="-130" y2="-30" stroke="#2b5a8a" stroke-width="1.5"/>
+
+    <!-- board_offset dim -->
+    <line x1="0" y1="-96" x2="-98" y2="-96" stroke="#c00" stroke-width="2"/>
+    <line x1="0" y1="-106" x2="0" y2="-86" stroke="#c00" stroke-width="2"/>
+    <line x1="-98" y1="-106" x2="-98" y2="-86" stroke="#c00" stroke-width="2"/>
+    <text x="-260" y="-104" font-size="19" fill="#c00">board_offset 26mm</text>
+    <text x="-260" y="-128" font-size="17" fill="#c00">→ ゴンドラが盤にもたれる</text>
+
+    <!-- gravity note -->
+    <path d="M -60 42 L -60 -10" stroke="#2a8a4a" stroke-width="3" marker-end="url(#ah2)"/>
+    <text x="-236" y="66" font-size="19" fill="#2a8a4a">重量は天板が受ける</text>
+    <text x="-236" y="90" font-size="17" fill="#2a8a4a">ボルトは前倒れ防止用</text>
+  </g>
+
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 z" fill="#c00"/>
+    </marker>
+    <marker id="ah2" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 z" fill="#2a8a4a"/>
+    </marker>
+  </defs>
+</svg>

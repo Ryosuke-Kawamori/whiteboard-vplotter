@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 800" width="1060" height="800" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1060" height="800" fill="#f7f7f5"/>
+  <text x="40" y="50" font-size="30" font-weight="bold" fill="#1a1a1a">継手の組み立て（正面から見た図）</text>
+  <text x="40" y="80" font-size="18" fill="#777">凸を凹に差し込み、M4ボルト2本で横から貫通させる</text>
+
+  <!-- ===== LEFT: exploded ===== -->
+  <text x="70" y="130" font-size="21" font-weight="bold" fill="#2b5a8a">① 分解した状態</text>
+
+  <g transform="translate(120,160)">
+    <!-- motor head socket -->
+    <g>
+      <rect x="0" y="0" width="170" height="120" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2.5"/>
+      <rect x="40" y="30" width="90" height="95" fill="#f7f7f5" stroke="#2b5a8a" stroke-width="2" stroke-dasharray="6 4"/>
+      <text x="185" y="40" font-size="19" fill="#2b5a8a">motor_head の</text>
+      <text x="185" y="64" font-size="19" fill="#2b5a8a">継手（凹）</text>
+      <text x="185" y="92" font-size="16" fill="#888">外形 34 × 20mm</text>
+      <text x="185" y="113" font-size="16" fill="#888">穴 26 × 12mm</text>
+      <!-- bolt holes -->
+      <circle cx="20" cy="55" r="7" fill="#fff" stroke="#333" stroke-width="2"/>
+      <circle cx="20" cy="98" r="7" fill="#fff" stroke="#333" stroke-width="2"/>
+      <circle cx="150" cy="55" r="7" fill="#fff" stroke="#333" stroke-width="2"/>
+      <circle cx="150" cy="98" r="7" fill="#fff" stroke="#333" stroke-width="2"/>
+      <!-- nut trap indicator -->
+      <rect x="141" y="46" width="18" height="18" fill="none" stroke="#c00" stroke-width="2"/>
+      <rect x="141" y="89" width="18" height="18" fill="none" stroke="#c00" stroke-width="2"/>
+      <text x="185" y="142" font-size="16" fill="#c00">□ = ナット埋め込み座</text>
+    </g>
+
+    <!-- arrow down -->
+    <path d="M 85 150 L 85 200" stroke="#2a8a4a" stroke-width="4" marker-end="url(#a1)"/>
+    <text x="100" y="182" font-size="18" fill="#2a8a4a">差し込む</text>
+
+    <!-- clamp tongue -->
+    <g transform="translate(0,215)">
+      <rect x="40" y="0" width="90" height="105" fill="#6a9fd5" stroke="#2b5a8a" stroke-width="2.5"/>
+      <circle cx="85" cy="30" r="7" fill="#fff" stroke="#333" stroke-width="2"/>
+      <circle cx="85" cy="73" r="7" fill="#fff" stroke="#333" stroke-width="2"/>
+      <text x="185" y="24" font-size="19" fill="#2b5a8a">frame_clamp の</text>
+      <text x="185" y="48" font-size="19" fill="#2b5a8a">継手（凸）</text>
+      <text x="185" y="76" font-size="16" fill="#888">26 × 12 × 24mm</text>
+      <!-- clamp body below -->
+      <rect x="-20" y="105" width="210" height="26" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2.5"/>
+      <rect x="-20" y="131" width="18" height="70" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2.5"/>
+      <rect x="140" y="131" width="18" height="82" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2.5"/>
+      <rect x="-2" y="131" width="142" height="82" fill="#dfe4e8" stroke="#8a9199" stroke-width="2"/>
+      <text x="30" y="180" font-size="17" fill="#5a6169">枠 20mm</text>
+      <text x="185" y="160" font-size="17" fill="#888">クランプ本体</text>
+    </g>
+  </g>
+
+  <!-- ===== RIGHT: assembled ===== -->
+  <text x="640" y="130" font-size="21" font-weight="bold" fill="#2b5a8a">② 組んだ状態</text>
+
+  <g transform="translate(660,175)">
+    <!-- socket outer -->
+    <rect x="0" y="0" width="170" height="120" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2.5"/>
+    <!-- tongue inside -->
+    <rect x="40" y="20" width="90" height="105" fill="#6a9fd5" stroke="#2b5a8a" stroke-width="2"/>
+
+    <!-- bolt 1 -->
+    <rect x="-34" y="49" width="26" height="14" rx="3" fill="#333"/>
+    <rect x="-8" y="52" width="166" height="8" fill="#666"/>
+    <rect x="141" y="46" width="18" height="20" fill="#999" stroke="#333" stroke-width="2"/>
+    <!-- bolt 2 -->
+    <rect x="-34" y="92" width="26" height="14" rx="3" fill="#333"/>
+    <rect x="-8" y="95" width="166" height="8" fill="#666"/>
+    <rect x="141" y="89" width="18" height="20" fill="#999" stroke="#333" stroke-width="2"/>
+
+    <text x="-160" y="46" font-size="18" fill="#333">M4 ボルト</text>
+    <text x="-160" y="68" font-size="18" fill="#333">×2本</text>
+    <text x="185" y="60" font-size="18" fill="#333">M4 ナット</text>
+    <text x="185" y="82" font-size="16" fill="#888">六角座に押し込む</text>
+    <text x="185" y="104" font-size="16" fill="#888">（先に入れておく）</text>
+
+    <!-- clamp body -->
+    <rect x="-20" y="140" width="210" height="26" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2.5"/>
+    <rect x="-20" y="166" width="18" height="70" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2.5"/>
+    <rect x="140" y="166" width="18" height="82" fill="#4a7fb5" stroke="#2b5a8a" stroke-width="2.5"/>
+    <rect x="-2" y="166" width="142" height="82" fill="#dfe4e8" stroke="#8a9199" stroke-width="2"/>
+    <text x="30" y="214" font-size="17" fill="#5a6169">ホワイトボード枠</text>
+
+    <!-- motor above -->
+    <rect x="30" y="-90" width="110" height="80" fill="#888" stroke="#555" stroke-width="2.5" rx="4"/>
+    <text x="50" y="-42" font-size="19" fill="#fff">NEMA17</text>
+    <path d="M 85 -10 L 85 0" stroke="#555" stroke-width="6"/>
+  </g>
+
+  <!-- note -->
+  <g transform="translate(60,640)">
+    <rect x="0" y="0" width="940" height="120" fill="#fff8e8" stroke="#e0a800" stroke-width="2" rx="6"/>
+    <text x="24" y="34" font-size="19" font-weight="bold" fill="#8a6800">必要なボルト（案A・左右あわせて）</text>
+    <text x="24" y="64" font-size="18" fill="#5a4800">継手用 M4 × 35mm ＋ ナット ……… 4組</text>
+    <text x="24" y="90" font-size="18" fill="#5a4800">クランプ締付 M4 × 25mm ＋ ナット … 4組</text>
+    <text x="470" y="64" font-size="18" fill="#5a4800">モーター固定 M3 × 8mm ………… 8本</text>
+    <text x="470" y="90" font-size="18" fill="#5a4800">※ナットは印刷済みの六角座に埋め込む</text>
+  </g>
+
+  <defs>
+    <marker id="a1" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 z" fill="#2a8a4a"/>
+    </marker>
+  </defs>
+</svg>
