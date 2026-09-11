@@ -4,6 +4,7 @@ config.py
 
 # ---- 生成物 ----
 build/
+examples/uploads/
 *.stl
 *.3mf
 *.gcode
