@@ -23,6 +23,8 @@ class ImageToSvgExampleTest(unittest.TestCase):
 
             strokes = raster_to_strokes(image_path, target_width=40, threshold=200)
             self.assertTrue(strokes)
+            dense_strokes = raster_to_strokes(image_path, target_width=40, threshold=200, line_step=1)
+            self.assertLess(len(strokes), len(dense_strokes))
 
             svg_path = Path(td) / 'sample.svg'
             write_svg_from_image(image_path, svg_path, target_width=40, threshold=200)
