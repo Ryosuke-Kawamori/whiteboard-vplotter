@@ -55,9 +55,15 @@ PIN_R_STEP, PIN_R_DIR = 19, 26
 PIN_ENABLE            = 16     # ドライバのEN (LOWで有効)
 PIN_SERVO             = 18
 
-SERVO_UP_US   = 1150     # ペンを離す
-SERVO_DOWN_US = 1750     # ペンを押しつける
-SERVO_WAIT    = 0.35     # [s] サーボ動作待ち
+SERVO_UP_US   = 0     # ペンを離す
+SERVO_DOWN_US = 2000     # ペンを押しつける
+SERVO_FAST_STEP_US = 15  # 通常域の最大PWM変化量 [us]
+SERVO_FAST_DELAY   = 0.008
+SERVO_SLOW_STEP_US = 5   # 目標付近の最大PWM変化量 [us]
+SERVO_SLOW_DELAY   = 0.015
+SERVO_SLOW_ZONE    = 0.20
+SERVO_WAIT         = 0.10  # [s] 最終位置での安定待ち
+SERVO_RELEASE_AFTER_MOVE = True  # 到達後にPWMを止めて保持時の振動を防ぐ
 
 PULSE_US = 3e-6          # STEPパルス幅
 
@@ -86,6 +92,7 @@ class LgpioIO:
         import lgpio
         self.lg = lgpio
         self.h = lgpio.gpiochip_open(0)
+        self.servo_active = False
         for p in (PIN_L_STEP, PIN_L_DIR, PIN_R_STEP, PIN_R_DIR, PIN_ENABLE):
             lgpio.gpio_claim_output(self.h, p, 0)
         lgpio.gpio_claim_output(self.h, PIN_SERVO, 0)
@@ -111,10 +118,17 @@ class LgpioIO:
             self.lg.gpio_write(self.h, PIN_R_STEP, 0)
 
     def servo(self, us):
-        self.lg.tx_servo(self.h, PIN_SERVO, int(us), 50)
+        us = int(us)
+        if us == 0:
+            if self.servo_active:
+                self.lg.tx_pwm(self.h, PIN_SERVO, 0, 0)
+                self.servo_active = False
+            return
+        self.lg.tx_servo(self.h, PIN_SERVO, us, 50)
+        self.servo_active = True
 
     def cleanup(self):
-        self.lg.tx_servo(self.h, PIN_SERVO, 0, 50)
+        self.servo(0)
         self.lg.gpio_write(self.h, PIN_ENABLE, 1)
         self.lg.gpiochip_close(self.h)
 
@@ -129,7 +143,8 @@ class Plotter:
         self.dry = isinstance(io, DummyIO)
         self.x, self.y = HOME_X, HOME_Y
         self.sl, self.sr = self._ik_steps(self.x, self.y)
-        self.pen = False
+        self.pen = None
+        self.servo_us = SERVO_UP_US
         io.setup()
         self.pen_up()
 
@@ -146,17 +161,57 @@ class Plotter:
         return round(l / MM_PER_STEP), round(r / MM_PER_STEP)
 
     # --- ペン ---
+    def _settle_servo(self):
+        if not self.dry:
+            time.sleep(SERVO_WAIT)
+        if SERVO_RELEASE_AFTER_MOVE:
+            self.io.servo(0)
+
+    def servo_smooth(self, target_us):
+        target_us = int(target_us)
+        start_us = self.servo_us
+        distance = abs(target_us - start_us)
+        if distance == 0:
+            return
+
+        direction = 1 if target_us > start_us else -1
+        slow_distance = distance * SERVO_SLOW_ZONE
+        while self.servo_us != target_us:
+            travelled = abs(self.servo_us - start_us)
+            remaining = abs(target_us - self.servo_us)
+            progress = travelled / distance
+            smoothstep_speed = 4.0 * progress * (1.0 - progress)
+            ease = 0.25 + 0.75 * smoothstep_speed
+
+            if remaining <= slow_distance:
+                step = SERVO_SLOW_STEP_US
+                delay = SERVO_SLOW_DELAY
+            else:
+                step = SERVO_FAST_STEP_US
+                delay = SERVO_FAST_DELAY
+            delta = max(1, round(step * ease))
+            self.servo_us += direction * min(delta, remaining)
+            self.io.servo(self.servo_us)
+            if not self.dry:
+                time.sleep(delay)
+
+        self._settle_servo()
+
     def pen_down(self):
-        if not self.pen:
-            self.io.servo(SERVO_DOWN_US)
-            time.sleep(0 if self.dry else SERVO_WAIT)
-            self.pen = True
+        if self.pen is True:
+            return
+        self.servo_smooth(SERVO_DOWN_US)
+        self.pen = True
 
     def pen_up(self):
-        if self.pen or self.pen is False:
+        if self.pen is False:
+            return
+        if self.pen is None:
             self.io.servo(SERVO_UP_US)
-            time.sleep(0 if self.dry else SERVO_WAIT)
-            self.pen = False
+            self._settle_servo()
+        else:
+            self.servo_smooth(SERVO_UP_US)
+        self.pen = False
 
     # --- 低レベル: 目標ステップ数まで両モーターを同期して回す ---
     def _run(self, tl, tr, duration):

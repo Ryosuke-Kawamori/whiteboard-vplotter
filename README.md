@@ -32,7 +32,7 @@ build/      生成された STL（git 管理外）
 ### Raspberry Pi
 
 ```bash
-sudo apt install python3-lgpio
+sudo apt install python3-lgpio python3-freetype fonts-noto-cjk
 git clone <このリポジトリ>
 cd whiteboard-vplotter/firmware
 cp config.example.py config.py
@@ -50,6 +50,39 @@ python3 vplotter.py text "HELLO" --size 90 --dry --svg preview.svg
 ```bash
 python3 vplotter.py jog "700,500"          # 回転方向の確認
 python3 vplotter.py text "MTG 10:00" --size 90
+```
+
+日本語をフォント輪郭のストロークでプレビューする:
+
+```bash
+python3 examples/meiryo_text.py "おやすみ" \
+  --font /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc \
+  --size 90 --dry --terminal-preview --svg preview.svg
+```
+
+画像を輪郭ストロークでプレビューする:
+
+```bash
+python3 examples/image_to_svg.py --image image.png \
+  --size 180 --simplify 1.5 --dry --svg preview.svg
+```
+
+`--simplify` を小さくすると輪郭が細かくなり、大きくすると点数が減る。
+小さなノイズ輪郭は `--min-contour-pixels` で除外できる。
+CLIとHTTPプレビューには、描画距離・空移動・ペン上下を含む概算時間が表示される。
+
+現在の設定では、ホワイトボードは `1800 x 900 mm`、安全描画領域は
+`X=250..1650 mm / Y=200..920 mm`（`1400 x 720 mm`）。限界と盤面を
+SVGで確認する:
+
+```bash
+python3 examples/plot_area_limits.py
+```
+
+ペン位置をHOMEへ合わせて、限界矩形を実際に描く:
+
+```bash
+python3 examples/plot_area_limits.py --draw
 ```
 
 ## CAD

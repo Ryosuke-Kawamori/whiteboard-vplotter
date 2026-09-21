@@ -14,7 +14,10 @@ HOME_X        = 950.0    # 起動時にペン先を置く位置
 HOME_Y        = 650.0
 
 AREA_X_MIN, AREA_X_MAX = 250.0, 1650.0
-AREA_Y_MIN, AREA_Y_MAX = 380.0, 920.0
+AREA_Y_MIN, AREA_Y_MAX = 200.0, 920.0
+
+BOARD_X_MIN, BOARD_X_MAX = 50.0, 1850.0
+BOARD_Y_MIN, BOARD_Y_MAX = 100.0, 1000.0
 
 # ---- 駆動系 ----
 PULLEY_TEETH  = 20
@@ -39,4 +42,10 @@ PIN_SERVO             = 18
 # ---- サーボ ----
 SERVO_UP_US   = 1150
 SERVO_DOWN_US = 1750
-SERVO_WAIT    = 0.35
+SERVO_FAST_STEP_US = 15  # 通常域の最大PWM変化量 [us]
+SERVO_FAST_DELAY   = 0.008
+SERVO_SLOW_STEP_US = 5   # 目標付近の最大PWM変化量 [us]
+SERVO_SLOW_DELAY   = 0.015
+SERVO_SLOW_ZONE    = 0.20
+SERVO_WAIT         = 0.10  # 最終位置での安定待ち [s]
+SERVO_RELEASE_AFTER_MOVE = True  # 到達後にPWMを停止する
