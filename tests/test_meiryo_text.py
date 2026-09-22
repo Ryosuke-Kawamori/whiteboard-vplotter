@@ -1,8 +1,10 @@
+import json
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
+from examples.local_image_upload_server import text_boxes_machine_strokes
 from examples.meiryo_text import (
     AREA_X_MAX,
     AREA_X_MIN,
@@ -11,6 +13,7 @@ from examples.meiryo_text import (
     center_strokes,
     draw,
     terminal_preview,
+    text_to_singleline_strokes,
     text_to_strokes,
 )
 
@@ -52,6 +55,17 @@ class MeiryoTextPlacementTest(unittest.TestCase):
         self.assertIn('PenDown', output.getvalue())
         self.assertIn('Draw', output.getvalue())
 
+    def test_draw_stops_between_points(self):
+        checks = iter((False, False, True))
+
+        stopped = draw(
+            [[(500.0, 500.0), (510.0, 500.0), (520.0, 500.0)]],
+            dry=True,
+            should_stop=lambda: next(checks, True),
+        )
+
+        self.assertTrue(stopped)
+
     def test_text_uses_closed_outline_strokes(self):
         font_path = Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
         if not font_path.exists():
@@ -65,6 +79,50 @@ class MeiryoTextPlacementTest(unittest.TestCase):
             and abs(stroke[0][1] - stroke[-1][1]) < 0.01
             for stroke in strokes
         ))
+
+    def test_per_line_size_does_not_compress_multiline_text(self):
+        font_path = Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
+        if not font_path.exists():
+            self.skipTest('Noto Sans CJK JP is not installed')
+
+        strokes = text_to_strokes(
+            '日本語\nフランス\n予定', font_path, 90.0, 0.0, 0.0,
+            per_line_size=True,
+        )
+        ys = [y for stroke in strokes for _, y in stroke]
+
+        self.assertGreater(max(ys) - min(ys), 250.0)
+
+    def test_single_line_text_is_not_outline_double_stroke(self):
+        font_path = Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
+        if not font_path.exists():
+            self.skipTest('Noto Sans CJK JP is not installed')
+
+        strokes = text_to_singleline_strokes('お', font_path, 90.0, 0.0, 0.0)
+
+        self.assertTrue(strokes)
+        self.assertTrue(all(len(stroke) >= 2 for stroke in strokes))
+        self.assertTrue(any(
+            abs(stroke[0][0] - stroke[-1][0]) > 0.01
+            or abs(stroke[0][1] - stroke[-1][1]) > 0.01
+            for stroke in strokes
+        ))
+
+    def test_text_boxes_single_line_flag_uses_single_line_renderer(self):
+        boxes = json.dumps([
+            {
+                'text': 'お',
+                'size': 90,
+                'x': 950,
+                'y': 560,
+                'singleLine': True,
+            }
+        ])
+
+        strokes = text_boxes_machine_strokes(boxes)
+
+        self.assertTrue(strokes)
+        self.assertTrue(all(len(stroke) >= 2 for stroke in strokes))
 
 
 if __name__ == '__main__':

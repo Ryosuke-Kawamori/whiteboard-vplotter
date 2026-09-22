@@ -28,21 +28,34 @@ from examples.image_to_svg import (
     write_board_preview,
     write_svg_from_image,
 )
-from examples.meiryo_text import check_fit, text_to_strokes
+from examples.meiryo_text import (
+    check_fit,
+    draw as draw_text_strokes,
+    text_to_singleline_strokes,
+    text_to_strokes,
+)
 
 UPLOAD_DIR = Path(__file__).resolve().parent / 'uploads'
 UPLOAD_DIR.mkdir(exist_ok=True)
 DRAWING_STOP_EVENT = threading.Event()
 DRAWING_ACTIVE_LOCK = threading.Lock()
 DRAWING_ACTIVE = False
+MOTION_LOCK = threading.Lock()
 JAPANESE_FONT = Path('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
 
 
-def text_machine_strokes(text, size=90.0, x=950.0, y=560.0):
-    """複数行テキストを輪郭化し、指定中心へ配置する。"""
+def text_machine_strokes(text, size=90.0, x=950.0, y=560.0, single_line=False):
+    """文字を輪郭または単線モードで生成し、指定中心へ配置する。"""
     if not JAPANESE_FONT.is_file():
         raise FileNotFoundError(f'日本語フォントが見つかりません: {JAPANESE_FONT}')
-    strokes = text_to_strokes(text, JAPANESE_FONT, size, 0.0, 0.0)
+    if single_line:
+        strokes = text_to_singleline_strokes(
+            text, JAPANESE_FONT, size, 0.0, 0.0, per_line_size=True
+        )
+    else:
+        strokes = text_to_strokes(
+            text, JAPANESE_FONT, size, 0.0, 0.0, per_line_size=True
+        )
     xs = [px for stroke in strokes for px, _ in stroke]
     ys = [py for stroke in strokes for _, py in stroke]
     offset_x = x - (min(xs) + max(xs)) / 2.0
@@ -62,37 +75,17 @@ def text_boxes_machine_strokes(serialized_boxes):
     for box in boxes:
         if not isinstance(box, dict) or not str(box.get('text', '')).strip():
             continue
+        single_line = bool(box.get('singleLine', box.get('single-line', False)))
         machine.extend(text_machine_strokes(
             str(box['text']),
             size=float(box.get('size', 90)),
             x=float(box.get('x', 950)),
             y=float(box.get('y', 560)),
+            single_line=single_line,
         ))
     if not machine:
         raise ValueError('文字を入力してください')
     return machine
-
-
-def draw_strokes_to_board(strokes, should_stop=None):
-    plotter = Plotter(LgpioIO())
-    try:
-        stopped = False
-        for stroke in strokes:
-            if should_stop is not None and should_stop():
-                stopped = True
-                break
-            plotter.jump_to(*stroke[0])
-            for point in stroke[1:]:
-                if should_stop is not None and should_stop():
-                    stopped = True
-                    break
-                plotter.line_to(*point)
-            if stopped:
-                break
-        plotter.finish()
-    except KeyboardInterrupt:
-        plotter.pen_up()
-        plotter.io.cleanup()
 
 
 def _legacy_page():
@@ -343,28 +336,41 @@ class ImageUploadHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlsplit(self.path)
         if parsed.path == '/preview':
+            if is_drawing_active():
+                self.respond_json({'error': '描画中はプレビューを更新できません'}, status=409)
+                return
             try:
-                params = parse_qs(parsed.query)
-                mode = params.get('mode', ['image'])[0]
-                size = float(params.get('size', ['90' if mode == 'text' else '180'])[0])
-                x = float(params.get('x', ['950'])[0])
-                y = float(params.get('y', ['560'])[0])
-                if mode == 'text':
-                    serialized_boxes = params.get('boxes', [''])[0]
-                    machine = text_boxes_machine_strokes(serialized_boxes)
-                    svg_path = UPLOAD_DIR / 'text_preview.svg'
-                    write_board_preview(svg_path, machine)
-                else:
-                    source_name = Path(params.get('source', [''])[0]).name
-                    image_path = UPLOAD_DIR / source_name
-                    if (not source_name or not image_path.is_file()
-                            or image_path.suffix.lower() == '.svg'):
-                        raise ValueError('アップロード済み画像が見つかりません')
-                    svg_path = image_path.with_name(f'{image_path.stem}_preview.svg')
-                    machine = write_svg_from_image(
-                        image_path, svg_path, target_width=220, threshold=200,
-                        size=size, x=x, y=y,
-                    )
+                with MOTION_LOCK:
+                    if is_drawing_active():
+                        raise RuntimeError('描画中はプレビューを更新できません')
+                    params = parse_qs(parsed.query)
+                    mode = params.get('mode', ['image'])[0]
+                    size = float(params.get('size', ['90' if mode == 'text' else '180'])[0])
+                    x = float(params.get('x', ['950'])[0])
+                    y = float(params.get('y', ['560'])[0])
+                    if mode == 'text':
+                        serialized_boxes = params.get('boxes', [''])[0]
+                        if serialized_boxes:
+                            boxes = json.loads(serialized_boxes)
+                            if isinstance(boxes, list):
+                                for box in boxes:
+                                    if isinstance(box, dict):
+                                        box['singleLine'] = box.get('singleLine', box.get('single-line', str(params.get('singleLine', ['false'])[0]).lower() == 'true'))
+                                serialized_boxes = json.dumps(boxes)
+                        machine = text_boxes_machine_strokes(serialized_boxes)
+                        svg_path = UPLOAD_DIR / 'text_preview.svg'
+                        write_board_preview(svg_path, machine)
+                    else:
+                        source_name = Path(params.get('source', [''])[0]).name
+                        image_path = UPLOAD_DIR / source_name
+                        if (not source_name or not image_path.is_file()
+                                or image_path.suffix.lower() == '.svg'):
+                            raise ValueError('アップロード済み画像が見つかりません')
+                        svg_path = image_path.with_name(f'{image_path.stem}_preview.svg')
+                        machine = write_svg_from_image(
+                            image_path, svg_path, target_width=220, threshold=200,
+                            size=size, x=x, y=y,
+                        )
                 self.respond_json({
                     'preview': f'/uploads/{svg_path.name}',
                     'message': f'プレビュー更新: {format_plot_estimate(machine)}',
@@ -429,16 +435,17 @@ class ImageUploadHandler(BaseHTTPRequestHandler):
                 DRAWING_STOP_EVENT.clear()
                 set_drawing_active(True)
                 try:
-                    if mode == 'text':
-                        draw_strokes_to_board(
-                            machine, should_stop=DRAWING_STOP_EVENT.is_set
-                        )
-                    else:
-                        draw_image_to_board(
-                            image_path, size=size, x=x, y=y, dry=False,
-                            threshold=200,
-                            should_stop=DRAWING_STOP_EVENT.is_set,
-                        )
+                    with MOTION_LOCK:
+                        if mode == 'text':
+                            draw_text_strokes(
+                                machine, should_stop=DRAWING_STOP_EVENT.is_set
+                            )
+                        else:
+                            draw_image_to_board(
+                                image_path, size=size, x=x, y=y, dry=False,
+                                threshold=200,
+                                should_stop=DRAWING_STOP_EVENT.is_set,
+                            )
                 finally:
                     set_drawing_active(False)
                 message = ('停止して原点へ戻りました。' if DRAWING_STOP_EVENT.is_set()
@@ -446,9 +453,13 @@ class ImageUploadHandler(BaseHTTPRequestHandler):
             else:
                 message = f'変換プレビューを作成しました。見積: {estimate}'
             source_name = image_path.name if image_path is not None else ''
-            location = '/?message={}&mode={}&source={}&boxes={}&preview={}&size={}&x={}&y={}'.format(
+            single_line_value = 'true' if mode == 'text' and any(
+                isinstance(box, dict) and bool(box.get('singleLine', box.get('single-line', False)))
+                for box in json.loads(serialized_boxes) if isinstance(json.loads(serialized_boxes), list)
+            ) else 'false'
+            location = '/?message={}&mode={}&source={}&boxes={}&singleLine={}&preview={}&size={}&x={}&y={}'.format(
                 quote(message), quote(mode), quote(source_name), quote(serialized_boxes),
-                quote(svg_path.name), quote(str(size)), quote(str(x)), quote(str(y)),
+                quote(single_line_value), quote(svg_path.name), quote(str(size)), quote(str(x)), quote(str(y)),
             )
             self.send_response(303)
             self.send_header('Location', location)
@@ -470,18 +481,30 @@ class ImageUploadHandler(BaseHTTPRequestHandler):
 
     def respond_json(self, value, status=200):
         payload = json.dumps(value, ensure_ascii=False).encode('utf-8')
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
-        self.send_header('Content-Length', str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     def log_message(self, format, *args):
         return
 
 
 def run_server(host='0.0.0.0', port=8000):
-    server = ThreadingHTTPServer((host, port), ImageUploadHandler)
+    try:
+        server = ThreadingHTTPServer((host, port), ImageUploadHandler)
+    except OSError as error:
+        if error.errno == 98:
+            raise SystemExit(
+                f'ポート {port} は使用中です。すでにサーバーが起動している場合は '
+                f'http://localhost:{port} を開いてください。別に起動する場合は '
+                f'--port {port + 1} を指定してください。'
+            ) from None
+        raise
     print(f'Serving on http://{host}:{port}')
     try:
         server.serve_forever()

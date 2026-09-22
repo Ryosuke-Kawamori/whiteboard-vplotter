@@ -17,6 +17,9 @@ def build_page():
     form { padding:18px; background:var(--paper); border:1px solid #d5dfdb; border-radius:8px; }
     label { display:block; margin:12px 0 6px; font-weight:600; }
     input, textarea, button { width:100%; min-height:44px; padding:10px 12px; border:1px solid var(--line); border-radius:6px; font:inherit; }
+    .single-line-toggle { display:flex; align-items:center; gap:10px; margin-top:10px; }
+    .single-line-toggle input[type="checkbox"] { width:18px; min-width:18px; max-width:18px; height:18px; min-height:18px; margin:0; padding:0; }
+    .single-line-toggle span { font-weight:600; }
     textarea { min-height:96px; resize:vertical; line-height:1.5; }
     button { margin-top:10px; border:0; background:var(--green); color:#fff; font-weight:700; cursor:pointer; }
     button.secondary { background:#3d5750; }
@@ -63,6 +66,10 @@ def build_page():
         <button id="addText" type="button" title="文字ボックスを追加">＋ 追加</button>
       </div>
       <textarea id="text" placeholder="今週の目標&#10;安全第一"></textarea>
+      <label class="single-line-toggle" for="singleLineToggle">
+        <input id="singleLineToggle" type="checkbox" />
+        <span>single-line</span>
+      </label>
       <button id="removeText" class="remove" type="button">選択中のボックスを削除</button>
     </div>
     <div class="stage-label">白板プレビュー</div>
@@ -92,11 +99,12 @@ def build_page():
   const mode = byId('mode'), imageMode = byId('imageMode'), textMode = byId('textMode');
   const imageControls = byId('imageControls'), textControls = byId('textControls');
   const image = byId('image'), source = byId('source'), text = byId('text');
+  const singleLineToggle = byId('singleLineToggle');
   const boxesInput = byId('boxes'), layer = byId('objectLayer'), preview = byId('svgPreview');
   const size = byId('size'), sizeNumber = byId('sizeNumber'), sizeLabel = byId('sizeLabel'), sizeOutput = byId('sizeOutput');
   const x = byId('x'), y = byId('y'), result = byId('result');
   const params = new URLSearchParams(location.search);
-  let textBoxes = [], selectedId = null, nextId = 1, previewTimer, previewController, dragStart;
+  let textBoxes = [], selectedId = null, nextId = 1, previewTimer, previewRunning = false, previewPending = false, dragStart;
 
   function clamp(value, control) { return Math.min(Number(control.max), Math.max(Number(control.min), value)); }
   function selectedBox() { return textBoxes.find(box => box.id === selectedId); }
@@ -122,15 +130,22 @@ def build_page():
   function selectBox(id) {
     selectedId = id;
     const box = selectedBox();
-    if (box) { text.value = box.text; size.value = box.size; sizeNumber.value = box.size; x.value = box.x; y.value = box.y; }
-    text.disabled = !box; size.disabled = !box; sizeNumber.disabled = !box; x.disabled = !box; y.disabled = !box;
+    if (box) { text.value = box.text; size.value = box.size; sizeNumber.value = box.size; x.value = box.x; y.value = box.y; singleLineToggle.checked = !!box.singleLine; }
+    text.disabled = !box; size.disabled = !box; sizeNumber.disabled = !box; x.disabled = !box; y.disabled = !box; singleLineToggle.disabled = !box;
     sizeOutput.value = box ? `${box.size} mm` : '-';
     renderBoxes();
   }
 
   function addTextBox(initial={}) {
     const offset = textBoxes.length * 35;
-    const box = { id:nextId++, text:initial.text || '新しい文字', size:Number(initial.size || 90), x:Number(initial.x ?? 950 + offset), y:Number(initial.y ?? 560 + offset) };
+    const box = {
+      id:nextId++,
+      text:initial.text || '新しい文字',
+      size:Number(initial.size || 90),
+      x:Number(initial.x ?? 950 + offset),
+      y:Number(initial.y ?? 560 + offset),
+      singleLine:Boolean(initial.singleLine || initial['single-line']),
+    };
     textBoxes.push(box);
     selectBox(box.id);
     schedulePreview();
@@ -153,25 +168,52 @@ def build_page():
   function syncSelected() {
     const box = selectedBox();
     if (!box) return;
-    box.text = text.value; box.size = Number(size.value); box.x = Number(x.value); box.y = Number(y.value);
+    box.text = text.value; box.size = Number(size.value); box.x = Number(x.value); box.y = Number(y.value); box.singleLine = singleLineToggle.checked;
     sizeOutput.value = `${box.size} mm`; renderBoxes(); schedulePreview();
   }
 
   async function updatePreview() {
     if (mode.value === 'image' && !source.value) return;
     if (mode.value === 'text' && !textBoxes.some(box => box.text.trim())) return;
-    if (previewController) previewController.abort();
-    previewController = new AbortController(); serializeBoxes();
-    const query = new URLSearchParams({mode:mode.value, source:source.value, boxes:boxesInput.value, size:size.value, x:x.value, y:y.value});
+    if (previewRunning) { previewPending = true; return; }
+    previewRunning = true;
+    previewPending = false;
+    serializeBoxes();
+    const query = new URLSearchParams({
+      mode: mode.value,
+      source: source.value,
+      boxes: boxesInput.value,
+      singleLine: String(Boolean(mode.value === 'text' && selectedBox()?.singleLine)),
+      size: size.value,
+      x: x.value,
+      y: y.value,
+    });
     try {
-      const response = await fetch('/preview?' + query, {signal:previewController.signal});
+      result.hidden = false;
+      result.textContent = 'プレビューを生成中...';
+      const response = await fetch('/preview?' + query);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'プレビューを更新できません');
       preview.src = data.preview + '?t=' + Date.now(); result.hidden = false; result.textContent = data.message;
-      history.replaceState(null, '', '/?' + new URLSearchParams({mode:mode.value, source:source.value, boxes:boxesInput.value, preview:data.preview.split('/').pop(), size:size.value, x:x.value, y:y.value}));
-    } catch (error) { if (error.name !== 'AbortError') { result.hidden = false; result.textContent = error.message; } }
+      history.replaceState(null, '', '/?' + new URLSearchParams({
+        mode: mode.value,
+        source: source.value,
+        boxes: boxesInput.value,
+        singleLine: String(Boolean(mode.value === 'text' && selectedBox()?.singleLine)),
+        preview: data.preview.split('/').pop(),
+        size: size.value,
+        x: x.value,
+        y: y.value,
+      }));
+    } catch (error) {
+      result.hidden = false;
+      result.textContent = error.message;
+    } finally {
+      previewRunning = false;
+      if (previewPending) schedulePreview();
+    }
   }
-  function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(updatePreview, 180); }
+  function schedulePreview() { clearTimeout(previewTimer); previewTimer = setTimeout(updatePreview, 500); }
 
   function startBoxDrag(event) {
     selectedId = Number(event.currentTarget.dataset.id);
@@ -196,11 +238,20 @@ def build_page():
   function endDrag() { if (dragStart) dragStart.node.classList.remove('dragging'); dragStart = null; }
   layer.addEventListener('pointerup', endDrag); layer.addEventListener('pointercancel', endDrag);
 
+  const previewButton = document.querySelector('button[name="action"][value="preview"]');
+  previewButton.addEventListener('click', event => {
+    if (mode.value === 'text' || mode.value === 'image') {
+      event.preventDefault();
+      serializeBoxes();
+      schedulePreview();
+    }
+  });
   byId('addText').addEventListener('click', () => addTextBox());
   byId('removeText').addEventListener('click', () => { textBoxes = textBoxes.filter(box => box.id !== selectedId); selectedId = textBoxes[0]?.id || null; if (!textBoxes.length) addTextBox(); else { selectBox(selectedId); schedulePreview(); } });
   imageMode.addEventListener('click', () => setMode('image')); textMode.addEventListener('click', () => setMode('text'));
   image.addEventListener('change', () => { if (image.files.length) source.value = ''; });
   text.addEventListener('input', syncSelected);
+  singleLineToggle.addEventListener('change', syncSelected);
   size.addEventListener('input', () => { sizeNumber.value = size.value; mode.value === 'text' ? syncSelected() : schedulePreview(); });
   sizeNumber.addEventListener('input', () => {
     size.value = clamp(Number(sizeNumber.value), size);

@@ -16,9 +16,12 @@ import argparse
 import math
 import subprocess
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 import freetype
+import numpy as np
+from PIL import Image
 
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent
@@ -45,6 +48,12 @@ MEIRYO_PATHS = (
     Path('/mnt/c/Windows/Fonts/meiryo.ttc'),
     Path('/mnt/c/Windows/Fonts/meiryob.ttc'),
 )
+
+SINGLELINE_RENDER_PX = 600
+SINGLELINE_THRESHOLD = 128
+SINGLELINE_PRUNE_PX = 3
+SINGLELINE_SIMPLIFY_PX = 1.5
+SINGLELINE_MERGE_GAP_PX = 2.0
 
 
 def find_meiryo(font_path=None):
@@ -142,8 +151,231 @@ class OutlineCollector:
         self.current = end
 
 
+def _zhang_suen_thin(binary):
+    """Zhang-Suen thinning を 8-neighbor 画像へ適用する。"""
+    image = np.array(binary, dtype=np.uint8, copy=True)
+    if image.size == 0:
+        return image
+    height, width = image.shape
+    if height < 3 or width < 3:
+        return image
+
+    changed = True
+    while changed:
+        changed = False
+        to_remove = []
+        for y in range(1, height - 1):
+            for x in range(1, width - 1):
+                if image[y, x] == 0:
+                    continue
+                p2, p3, p4, p5, p6, p7, p8, p9 = (
+                    image[y - 1, x], image[y - 1, x + 1], image[y, x + 1],
+                    image[y + 1, x + 1], image[y + 1, x], image[y + 1, x - 1],
+                    image[y, x - 1], image[y - 1, x - 1],
+                )
+                neighbors = sum((p2, p3, p4, p5, p6, p7, p8, p9))
+                if neighbors < 2 or neighbors > 6:
+                    continue
+                transitions = 0
+                for first, second in zip((p2, p3, p4, p5, p6, p7, p8, p9),
+                                         (p3, p4, p5, p6, p7, p8, p9, p2)):
+                    if first == 0 and second == 1:
+                        transitions += 1
+                if transitions != 1:
+                    continue
+                if p2 * p4 * p6 == 0 and p4 * p6 * p8 == 0:
+                    to_remove.append((y, x))
+        for y, x in to_remove:
+            if image[y, x]:
+                image[y, x] = 0
+                changed = True
+
+        to_remove = []
+        for y in range(1, height - 1):
+            for x in range(1, width - 1):
+                if image[y, x] == 0:
+                    continue
+                p2, p3, p4, p5, p6, p7, p8, p9 = (
+                    image[y - 1, x], image[y - 1, x + 1], image[y, x + 1],
+                    image[y + 1, x + 1], image[y + 1, x], image[y + 1, x - 1],
+                    image[y, x - 1], image[y - 1, x - 1],
+                )
+                neighbors = sum((p2, p3, p4, p5, p6, p7, p8, p9))
+                if neighbors < 2 or neighbors > 6:
+                    continue
+                transitions = 0
+                for first, second in zip((p2, p3, p4, p5, p6, p7, p8, p9),
+                                         (p3, p4, p5, p6, p7, p8, p9, p2)):
+                    if first == 0 and second == 1:
+                        transitions += 1
+                if transitions != 1:
+                    continue
+                if p2 * p4 * p8 == 0 and p2 * p6 * p8 == 0:
+                    to_remove.append((y, x))
+        for y, x in to_remove:
+            if image[y, x]:
+                image[y, x] = 0
+                changed = True
+    return image > 0
+
+
+def _connected_components(mask):
+    """Binary mask を connected component ごとに返す。"""
+    visited = set()
+    height, width = mask.shape
+    components = []
+    for y in range(height):
+        for x in range(width):
+            if not mask[y, x] or (y, x) in visited:
+                continue
+            stack = [(y, x)]
+            visited.add((y, x))
+            component = []
+            while stack:
+                cy, cx = stack.pop()
+                component.append((cy, cx))
+                for ny in range(max(0, cy - 1), min(height, cy + 2)):
+                    for nx in range(max(0, cx - 1), min(width, cx + 2)):
+                        if (ny, nx) == (cy, cx) or not mask[ny, nx]:
+                            continue
+                        if (ny, nx) not in visited:
+                            visited.add((ny, nx))
+                            stack.append((ny, nx))
+            components.append(component)
+    return components
+
+
+def _polyline_length(points):
+    return sum(math.dist(a, b) for a, b in zip(points, points[1:]))
+
+
+def _simplify_polyline(points, tolerance):
+    if len(points) <= 2:
+        return points
+    simplified = [points[0]]
+    for index in range(1, len(points) - 1):
+        prev = points[index - 1]
+        current = points[index]
+        next_point = points[index + 1]
+        cross = abs((next_point[0] - prev[0]) * (current[1] - prev[1])
+                    - (next_point[1] - prev[1]) * (current[0] - prev[0]))
+        denom = math.dist(prev, next_point)
+        if denom <= 1e-6:
+            simplified.append(current)
+            continue
+        distance = cross / denom
+        if distance > tolerance:
+            simplified.append(current)
+    simplified.append(points[-1])
+    return simplified
+
+
+def _skeleton_to_polylines(mask, prune_px=3, simplify_px=1.5, merge_gap_px=2.0):
+    """1ピクセル幅の骨格線を長い polyline にまとめる。"""
+    components = _connected_components(mask)
+    polylines = []
+    for component in components:
+        if len(component) < 2:
+            continue
+        adjacency = defaultdict(set)
+        for y, x in component:
+            for ny in range(max(0, y - 1), min(mask.shape[0], y + 2)):
+                for nx in range(max(0, x - 1), min(mask.shape[1], x + 2)):
+                    if (ny, nx) == (y, x) or not mask[ny, nx]:
+                        continue
+                    adjacency[(y, x)].add((ny, nx))
+        for start in list(adjacency):
+            if len(adjacency[start]) == 0:
+                continue
+            if any(len(adjacency[p]) == 1 for p in adjacency if p == start):
+                pass
+        used = set()
+        for start in sorted(component, key=lambda p: (len(adjacency[p]), -p[0], -p[1])):
+            if start in used:
+                continue
+            path = [start]
+            current = start
+            previous = None
+            while True:
+                neighbors = [n for n in adjacency[current]
+                             if n not in used and n != previous]
+                if not neighbors:
+                    break
+                if len(neighbors) > 1:
+                    candidate = max(neighbors, key=lambda point: len(adjacency[point]))
+                    if candidate in path[:-1]:
+                        candidate = neighbors[0]
+                else:
+                    candidate = neighbors[0]
+                if candidate in path[:-1]:
+                    break
+                used.add(current)
+                previous, current = current, candidate
+                path.append(current)
+                if len(path) > 1 and current in path[:-1]:
+                    break
+            if len(path) < 2:
+                continue
+            points = [(float(x), float(y)) for y, x in path]
+            if _polyline_length(points) <= prune_px:
+                continue
+            points = _simplify_polyline(points, simplify_px)
+            if len(points) >= 2:
+                polylines.append(points)
+
+    merged = []
+    for polyline in polylines:
+        if not merged:
+            merged.append(polyline)
+            continue
+        last = merged[-1]
+        gap = math.dist(last[-1], polyline[0])
+        if gap <= merge_gap_px and _polyline_length(last + polyline) < _polyline_length(last) + _polyline_length(polyline) + 1.0:
+            merged[-1] = last + polyline[1:]
+        else:
+            merged.append(polyline)
+    return merged
+
+
+def _render_glyph_singleline(face, character, render_px):
+    """1文字を高解像度 bitmap にラスタライズし、骨格線へ変換する。"""
+    face.set_char_size(render_px * 64)
+    glyph_index = face.get_char_index(character)
+    face.load_char(character, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_NORMAL)
+    if not face.glyph.bitmap.buffer:
+        return []
+    bitmap = face.glyph.bitmap
+    pixels = np.frombuffer(bitmap.buffer, dtype=np.uint8)
+    rows = bitmap.rows
+    width = bitmap.width
+    pitch = max(bitmap.pitch, width)
+    if pixels.size < rows * pitch:
+        pixels = np.resize(pixels, rows * pitch)
+    image = np.asarray(pixels[:rows * pitch], dtype=np.uint8).reshape(rows, pitch)
+    mask = image[:, :width] > SINGLELINE_THRESHOLD
+    if not np.any(mask):
+        return []
+    skeleton = _zhang_suen_thin(mask)
+    polylines = _skeleton_to_polylines(skeleton,
+                                       prune_px=SINGLELINE_PRUNE_PX,
+                                       simplify_px=SINGLELINE_SIMPLIFY_PX,
+                                       merge_gap_px=SINGLELINE_MERGE_GAP_PX)
+    if not polylines:
+        return []
+    offset = [(face.glyph.bitmap_left + x, face.glyph.bitmap_top - y)
+              for poly in polylines for x, y in poly]
+    if not offset:
+        return []
+    return [
+        [(float(x + cx), float(y + cy)) for x, y in poly]
+        for poly, (cx, cy) in zip(polylines, [
+            (0.0, 0.0),
+        ] * len(polylines))
+    ]
+
+
 def text_to_strokes(text, font_path, size, x, y, curve_step=4.0,
-                    font_pixels=180, face_index=0):
+                    font_pixels=180, face_index=0, per_line_size=False):
     """フォントの輪郭を抽出し、機械座標の連続ストロークへ変換する。"""
     if not text:
         raise ValueError('描画する文字列が空です')
@@ -155,6 +387,8 @@ def text_to_strokes(text, font_path, size, x, y, curve_step=4.0,
     face = freetype.Face(str(font_path), index=face_index)
     face.set_char_size(font_pixels * 64)
     strokes = []
+    stroke_lines = []
+    line_index = 0
     pen_x = 0.0
     baseline_y = 0.0
     previous_glyph = 0
@@ -164,6 +398,7 @@ def text_to_strokes(text, font_path, size, x, y, curve_step=4.0,
             pen_x = 0.0
             baseline_y += font_pixels * 1.25
             previous_glyph = 0
+            line_index += 1
             continue
 
         glyph_index = face.get_char_index(character)
@@ -178,8 +413,10 @@ def text_to_strokes(text, font_path, size, x, y, curve_step=4.0,
                 conic_to=collector.conic_to,
                 cubic_to=collector.cubic_to,
             )
-            strokes.extend(stroke for stroke in collector.strokes
-                           if len(stroke) > 1)
+            glyph_strokes = [stroke for stroke in collector.strokes
+                             if len(stroke) > 1]
+            strokes.extend(glyph_strokes)
+            stroke_lines.extend([line_index] * len(glyph_strokes))
         pen_x += face.glyph.advance.x / 64.0
         previous_glyph = glyph_index
 
@@ -187,8 +424,223 @@ def text_to_strokes(text, font_path, size, x, y, curve_step=4.0,
         raise ValueError('文字から輪郭線を生成できませんでした')
     xs = [px for stroke in strokes for px, _ in stroke]
     ys = [py for stroke in strokes for _, py in stroke]
-    scale = size / max(max(ys) - min(ys), 1.0)
-    return [[(x + (px - min(xs)) * scale, y + (py - min(ys)) * scale)
+    min_x = min(xs)
+    min_y = min(ys)
+    natural_height = max(ys) - min_y
+    if per_line_size:
+        line_heights = []
+        for current_line in set(stroke_lines):
+            line_ys = [py for stroke, stroke_line in zip(strokes, stroke_lines)
+                       if stroke_line == current_line for _, py in stroke]
+            line_heights.append(max(line_ys) - min(line_ys))
+        natural_height = max(line_heights)
+    scale = size / max(natural_height, 1.0)
+    return [[(x + (px - min_x) * scale, y + (py - min_y) * scale)
+             for px, py in stroke] for stroke in strokes]
+
+
+def _bitmap_buffer_to_array(bitmap):
+    """FreeType の bitmap.buffer は list/bytes/memoryview のいずれかなので正規化する。"""
+    raw = bitmap.buffer
+    if isinstance(raw, (bytes, bytearray, memoryview)):
+        return np.frombuffer(raw, dtype=np.uint8)
+    if raw is None:
+        return np.array([], dtype=np.uint8)
+    return np.asarray(list(raw), dtype=np.uint8)
+
+
+def _bitmap_to_skeleton(mask, threshold):
+    """Bitmap のしきい値越え領域を 1px 系の骨格線へ変換する。"""
+    if mask.ndim != 2:
+        return np.zeros_like(mask, dtype=bool)
+    binary = np.asarray(mask, dtype=np.uint8)
+    if binary.size == 0:
+        return np.zeros_like(binary, dtype=bool)
+    if binary.max() <= 1:
+        binary = binary.astype(np.uint8)
+    else:
+        binary = (binary > threshold).astype(np.uint8)
+    return _zhang_suen_thin(binary.astype(np.uint8))
+
+
+def _trace_skeleton_polyline(component, mask):
+    """骨格連結成分から長いポリラインを抽出する。"""
+    candidates = list(component)
+    if not candidates:
+        return []
+
+    adjacency = {}
+    height, width = mask.shape
+    for y, x in candidates:
+        neighbors = []
+        for ny in range(max(0, y - 1), min(height, y + 2)):
+            for nx in range(max(0, x - 1), min(width, x + 2)):
+                if (ny, nx) == (y, x):
+                    continue
+                if mask[ny, nx] and (ny, nx) in component:
+                    neighbors.append((ny, nx))
+        adjacency[(y, x)] = neighbors
+
+    visited = set()
+    polylines = []
+    for start in sorted(candidates, key=lambda point: (len(adjacency[point]), -point[0], -point[1])):
+        if start in visited:
+            continue
+        path = [start]
+        current = start
+        previous = None
+        visited.add(start)
+
+        while True:
+            next_candidates = [
+                neighbor for neighbor in adjacency[current]
+                if neighbor != previous and neighbor not in path[:-1]
+            ]
+            if not next_candidates:
+                break
+            weighted = sorted(
+                next_candidates,
+                key=lambda point: (-len(adjacency[point]), abs(point[0] - current[0]) + abs(point[1] - current[1])),
+            )
+            next_point = weighted[0]
+            if next_point in path[:-1]:
+                break
+            path.append(next_point)
+            visited.add(next_point)
+            previous, current = current, next_point
+            if len(path) > 2 and current == start:
+                break
+
+        if len(path) >= 2:
+            polylines.append(path)
+
+    return polylines
+
+
+def _skeleton_to_polylines(mask, prune_px=3, simplify_px=1.5, merge_gap_px=2.0):
+    """1ピクセル幅の骨格線を長い polyline にまとめる。"""
+    components = _connected_components(mask)
+    polylines = []
+    for component in components:
+        if len(component) < 2:
+            continue
+        traced = _trace_skeleton_polyline(set(component), mask)
+        for path in traced:
+            if len(path) < 2:
+                continue
+            points = [(float(x), float(y)) for y, x in path]
+            if _polyline_length(points) <= prune_px:
+                continue
+            points = _simplify_polyline(points, simplify_px)
+            if len(points) >= 2:
+                polylines.append(points)
+
+    merged = []
+    for polyline in polylines:
+        if not merged:
+            merged.append(polyline)
+            continue
+        last = merged[-1]
+        gap = math.dist(last[-1], polyline[0])
+        if gap <= merge_gap_px:
+            merged[-1] = last + polyline[1:]
+        else:
+            merged.append(polyline)
+    return merged
+
+
+def text_to_singleline_strokes(text, font_path, size, x, y,
+                              curve_step=4.0, font_pixels=180,
+                              face_index=0, per_line_size=False,
+                              render_px=SINGLELINE_RENDER_PX,
+                              threshold=SINGLELINE_THRESHOLD,
+                              prune_px=SINGLELINE_PRUNE_PX,
+                              simplify_px=SINGLELINE_SIMPLIFY_PX,
+                              merge_gap_px=SINGLELINE_MERGE_GAP_PX):
+    """文字を高解像度ラスター化して骨格化し、一本線のストロークへ変換する。"""
+    if not text:
+        raise ValueError('描画する文字列が空です')
+    if size <= 0:
+        raise ValueError('--size は 0 より大きくしてください')
+
+    face = freetype.Face(str(font_path), index=face_index)
+    face.set_char_size(render_px * 64)
+    strokes = []
+    stroke_lines = []
+    line_index = 0
+    pen_x = 0.0
+    baseline_y = 0.0
+    previous_glyph = 0
+
+    for character in text:
+        if character == '\n':
+            pen_x = 0.0
+            baseline_y += render_px * 1.25
+            previous_glyph = 0
+            line_index += 1
+            continue
+
+        glyph_index = face.get_char_index(character)
+        if previous_glyph and glyph_index and face.has_kerning:
+            pen_x += face.get_kerning(previous_glyph, glyph_index).x / 64.0
+
+        face.load_char(character, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_NORMAL)
+        bitmap = face.glyph.bitmap
+        if not bitmap.buffer or bitmap.width <= 0 or bitmap.rows <= 0:
+            pen_x += face.glyph.advance.x / 64.0
+            previous_glyph = glyph_index
+            continue
+
+        pixels = _bitmap_buffer_to_array(bitmap)
+        pitch = max(bitmap.pitch, bitmap.width)
+        if pixels.size < bitmap.rows * pitch:
+            pixels = np.resize(pixels, bitmap.rows * pitch)
+        image = np.asarray(pixels[:bitmap.rows * pitch], dtype=np.uint8).reshape(bitmap.rows, pitch)
+        mask = image[:, :bitmap.width] > threshold
+        if not np.any(mask):
+            pen_x += face.glyph.advance.x / 64.0
+            previous_glyph = glyph_index
+            continue
+
+        skeleton = _bitmap_to_skeleton(mask, threshold)
+        polylines = _skeleton_to_polylines(
+            skeleton,
+            prune_px=prune_px,
+            simplify_px=simplify_px,
+            merge_gap_px=merge_gap_px,
+        )
+        for polyline in polylines:
+            world_points = []
+            for px_index, py_index in polyline:
+                world_x = pen_x + face.glyph.bitmap_left + px_index
+                world_y = baseline_y - (face.glyph.bitmap_top - py_index)
+                world_points.append((world_x, world_y))
+            if len(world_points) > 1:
+                strokes.append(world_points)
+                stroke_lines.append(line_index)
+
+        pen_x += face.glyph.advance.x / 64.0
+        previous_glyph = glyph_index
+
+    if not strokes:
+        raise ValueError('文字から骨格線を生成できませんでした')
+
+    xs = [px for stroke in strokes for px, _ in stroke]
+    ys = [py for stroke in strokes for _, py in stroke]
+    min_x = min(xs)
+    min_y = min(ys)
+    natural_height = max(ys) - min_y
+    if per_line_size:
+        line_heights = []
+        for current_line in set(stroke_lines):
+            line_ys = [py for stroke, line_no in zip(strokes, stroke_lines)
+                       if line_no == current_line for _, py in stroke]
+            if line_ys:
+                line_heights.append(max(line_ys) - min(line_ys))
+        if line_heights:
+            natural_height = max(line_heights)
+    scale = size / max(natural_height, 1.0)
+    return [[(x + (px - min_x) * scale, y + (py - min_y) * scale)
              for px, py in stroke] for stroke in strokes]
 
 
@@ -247,11 +699,15 @@ def terminal_preview(strokes, max_width=80, max_height=30):
     return '\n'.join(''.join(row).rstrip() for row in canvas)
 
 
-def draw(strokes, dry=False, debug_pen=False):
+def draw(strokes, dry=False, debug_pen=False, should_stop=None):
     io = DummyIO() if dry else LgpioIO()
     plotter = Plotter(io)
+    stopped = False
     try:
         for index, stroke in enumerate(strokes, start=1):
+            if should_stop is not None and should_stop():
+                stopped = True
+                break
             if debug_pen:
                 print(f'[{index:04d}] PenUp   -> '
                       f'X={stroke[0][0]:.1f}, Y={stroke[0][1]:.1f}')
@@ -262,12 +718,41 @@ def draw(strokes, dry=False, debug_pen=False):
                 if debug_pen:
                     print(f'[{index:04d}] Draw    -> '
                           f'X={point[0]:.1f}, Y={point[1]:.1f}')
+                if should_stop is not None and should_stop():
+                    stopped = True
+                    break
                 plotter.line_to(*point)
+            if stopped:
+                break
         plotter.finish()
     except KeyboardInterrupt:
         print('\n中断しました', file=sys.stderr)
         plotter.pen_up()
         io.cleanup()
+        stopped = True
+    return stopped
+
+
+def summarize_strokes(strokes):
+    """ストロークの数と移動長を計測する。"""
+    stroke_count = len(strokes)
+    point_count = sum(len(stroke) for stroke in strokes)
+    draw_length = sum(math.dist(a, b) for stroke in strokes
+                      for a, b in zip(stroke, stroke[1:]))
+    penup_length = 0.0
+    previous_end = None
+    for stroke in strokes:
+        if not stroke:
+            continue
+        if previous_end is not None:
+            penup_length += math.dist(previous_end, stroke[0])
+        previous_end = stroke[-1]
+    return {
+        'stroke_count': stroke_count,
+        'point_count': point_count,
+        'draw_length': draw_length,
+        'penup_length': penup_length,
+    }
 
 
 def main():
@@ -281,6 +766,8 @@ def main():
                         help='曲線分割幅[font px]（小さいほど滑らか）')
     parser.add_argument('--face-index', type=int, default=0,
                         help='TTC内のフォント番号（Noto Sans CJK JPは0）')
+    parser.add_argument('--single-line', action='store_true',
+                        help='フォント輪郭を一本線骨格へ変換して描画')
     parser.add_argument('--dry', action='store_true', help='GPIOを使わず動作確認')
     parser.add_argument('--svg', help='プレビューSVGの出力先')
     parser.add_argument('--terminal-preview', action='store_true',
@@ -291,10 +778,32 @@ def main():
 
     try:
         font_path = find_meiryo(args.font)
-        strokes = text_to_strokes(
-            args.text, font_path, args.size, 0, 0,
-            curve_step=args.curve_step, face_index=args.face_index
-        )
+        if args.single_line:
+            outline_strokes = text_to_strokes(
+                args.text, font_path, args.size, 0, 0,
+                curve_step=args.curve_step, face_index=args.face_index,
+            )
+            strokes = text_to_singleline_strokes(
+                args.text, font_path, args.size, 0, 0,
+                curve_step=args.curve_step, face_index=args.face_index,
+            )
+            outline_summary = summarize_strokes(outline_strokes)
+            single_summary = summarize_strokes(strokes)
+            print('outline: '
+                  f'strokes={outline_summary["stroke_count"]} / '
+                  f'points={outline_summary["point_count"]} / '
+                  f'draw={outline_summary["draw_length"]:.1f} mm / '
+                  f'penup={outline_summary["penup_length"]:.1f} mm')
+            print('single-line: '
+                  f'strokes={single_summary["stroke_count"]} / '
+                  f'points={single_summary["point_count"]} / '
+                  f'draw={single_summary["draw_length"]:.1f} mm / '
+                  f'penup={single_summary["penup_length"]:.1f} mm')
+        else:
+            strokes = text_to_strokes(
+                args.text, font_path, args.size, 0, 0,
+                curve_step=args.curve_step, face_index=args.face_index,
+            )
         strokes = center_strokes(strokes, args.x, args.y)
         check_fit(strokes)
     except (FileNotFoundError, OSError, ValueError) as error:
